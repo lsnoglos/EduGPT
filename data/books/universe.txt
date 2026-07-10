@@ -1,0 +1,16 @@
+El perro es un animal.
+El gato es un animal.
+Los perros ladran.
+Los gatos maúllan.
+Las aves vuelan.
+Los peces nadan.
+Python es un lenguaje de programación.
+Una variable almacena información.
+Una clase puede crear objetos.
+Los objetos tienen atributos.
+Los objetos tienen métodos.
+Una computadora procesa datos.
+La memoria RAM almacena información temporal.
+Nicaragua está en Centroamérica.
+León es una ciudad de Nicaragua.
+El volcán Cerro Negro está en León.
