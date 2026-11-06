@@ -27,11 +27,11 @@ streamlit run app.py
 
 1. En **Biblioteca**, carga libros TXT, PDF con texto seleccionable o DOCX y pulsa **Guardar libros**.
 2. Pulsa **Preparar corpus y vocabulario**. El resultado se guarda en `data/processed/`.
-3. En **Entrenamiento**, ajusta los hiperparámetros y pulsa **Entrenar embeddings**.
-4. Examina pérdida y gradientes en **Experimentos** y la similitud coseno y el mapa PCA en **Explorar palabras**.
-5. Exporta el ZIP del experimento con los pesos, vocabulario, configuración, métricas y vectores.
+3. En el **primer inicio**, EduGPT detecta núcleos CPU, RAM, GPUs CUDA y VRAM; acepta el perfil Equilibrado recomendado o ajusta las opciones y guarda la configuración local.\n4. En **🛠️ Configuración**, selecciona **Automático, CPU o una GPU CUDA concreta** y personaliza los perfiles Ahorrador, Equilibrado o Alto rendimiento, núcleos/hilos CPU, cuota del asignador CUDA, lote, dimensiones, épocas, negativos, ventana, máximo de pares, tasa de aprendizaje, semilla y frecuencia de checkpoints.\n5. En **Entrenamiento**, comprueba el resumen de recursos y pulsa **Entrenar embeddings**.
+6. Examina pérdida, gradientes, RAM y memoria GPU en **Experimentos** y similitud coseno y mapa PCA en **Explorar palabras**.
+7. Exporta el ZIP del experimento con pesos, vocabulario, parámetros efectivos, métricas y vectores.
 
-Cada entrenamiento comienza con pesos inicializados aleatoriamente, se guarda en `artifacts/runs/` y utiliza CUDA si está disponible.
+Cada entrenamiento comienza con pesos inicializados aleatoriamente y se guarda en `artifacts/runs/`. Solo usa CUDA si se selecciona expresamente o si el dispositivo es **Automático** y hay CUDA. Elegir **CPU** fuerza el entrenamiento en CPU aunque exista una GPU. Elegir una GPU que no esté disponible genera un error en lugar de cambiar silenciosamente a CPU.\n\nLas preferencias se guardan en `data/settings.json` (no se sube a GitHub). El límite de VRAM se aplica al **asignador de PyTorch**, no a toda la memoria consumida por el proceso ni a otras aplicaciones. Los perfiles son puntos de partida, no predicciones de tiempo ni garantías de ausencia de OOM. Al cambiar de equipo, la selección de GPU que no exista debe revisarse antes de entrenar.
 
 ## Interpretación científica
 - Los resultados y métricas son reales. `pair_accuracy` mide discriminación de pares positivos y negativos, **no** precisión de generación ni comprensión lingüística.
@@ -51,7 +51,7 @@ python -m pytest -q
 ```text
 app.py                 Interfaz web Streamlit
 edugpt/core.py         Corpus, tokens, vocabulario e IDs
-edugpt/trainer.py      Skip-gram, métricas y checkpoints
+edugpt/trainer.py      Skip-gram, CPU/CUDA, métricas y checkpoints\nedugpt/hardware.py     Detección de hardware y perfiles de consumo\nedugpt/settings_ui.py  Asistente inicial y formulario de configuración\ndata/settings.json     Preferencias locales, no se sincronizan por Git
 tests/                 Pruebas automatizadas
 data/books/            Libros locales (ignorado por Git)
 artifacts/runs/        Modelos y métricas locales (ignorado por Git)
