@@ -16,23 +16,45 @@ import torch
 
 from edugpt.core import SUPPORTED, prepare_corpus
 from edugpt.trainer import neighbors, train
+from edugpt.hardware import detect_hardware, load_settings, device_options
+from edugpt.settings_ui import settings_editor
 
 ROOT = Path(__file__).resolve().parent
 BOOKS = ROOT / "data" / "books"
 CORPUS = ROOT / "data" / "processed" / "corpus.json"
 RUNS = ROOT / "artifacts" / "runs"
+SETTINGS = ROOT / "data" / "settings.json"
 BOOKS.mkdir(parents=True, exist_ok=True)
 RUNS.mkdir(parents=True, exist_ok=True)
 st.set_page_config(page_title="EduGPT | Laboratorio IA", page_icon="🧠", layout="wide")
 st.title("🧠 EduGPT · Laboratorio de aprendizaje")
 st.caption("Una IA educativa entrenada desde cero con libros locales. Sin APIs ni pesos preentrenados.")
-if torch.cuda.is_available():
-    st.success(f"GPU CUDA disponible: {torch.cuda.get_device_name(0)}")
-else:
-    st.info("Modo CPU activo. En la laptop con RTX 3070, instala PyTorch con CUDA para acelerar el entrenamiento.")
+hardware = detect_hardware()
+if not SETTINGS.exists():
+    settings_editor(SETTINGS, hardware, first_time=True)
+    st.stop()
 
-books_tab, training_tab, explorer_tab, experiment_tab = st.tabs([
-    "📚 Biblioteca", "⚙️ Entrenamiento", "🔎 Explorar palabras", "📊 Experimentos"])
+settings = load_settings(SETTINGS, hardware)
+if settings["device"] == "auto":
+    resolved_name = "GPU CUDA" if hardware["gpu_devices"] else "CPU"
+else:
+    resolved_name = settings["device"].upper()
+st.caption(f'Configuración actual: {settings["profile"]} · Dispositivo: {resolved_name} · '
+           f'{settings["cpu_threads"]} hilos CPU · Lote {settings["batch_size"]}')
+
+# Si una GPU explícitamente elegida desaparece, exigir que se revise la selección.
+try:
+    stored_device = json.loads(SETTINGS.read_text(encoding="utf-8")).get("device", "auto")
+except (OSError, ValueError):
+    stored_device = "auto"
+needs_device_review = stored_device not in device_options(hardware)
+if needs_device_review:
+    st.error(f"La selección guardada ({stored_device}) ya no está disponible. "
+             "Abre Configuración y guarda un dispositivo válido antes de entrenar.")
+
+books_tab, training_tab, explorer_tab, experiment_tab, config_tab = st.tabs([
+    "📚 Biblioteca", "⚙️ Entrenamiento", "🔎 Explorar palabras",
+    "📊 Experimentos", "🛠️ Configuración"])
 
 with books_tab:
     st.subheader("Libros que alimentan el modelo")
@@ -62,34 +84,45 @@ with books_tab:
         st.json(json.loads(CORPUS.read_text(encoding="utf-8"))["stats"])
 
 with training_tab:
-    st.subheader("Skip-gram + muestreo negativo")
-    st.write("Pesos inicializados aleatoriamente; cada métrica procede de una ejecución real de PyTorch.")
-    c1, c2, c3 = st.columns(3)
-    dimensions = c1.selectbox("Dimensiones de embeddings", [32, 64, 128, 256], index=1)
-    window = c2.slider("Ventana de contexto", 1, 6, 2)
-    epochs = c3.slider("Épocas", 1, 50, 10)
-    c4, c5, c6 = st.columns(3)
-    negatives = c4.slider("Ejemplos negativos", 1, 15, 5)
-    batch = c5.selectbox("Lote", [128, 256, 512, 1024], index=2)
-    max_pairs = c6.number_input("Máximo de pares", min_value=1000, max_value=1000000, value=200000, step=1000)
-    if st.button("Entrenar embeddings", type="primary", disabled=not CORPUS.exists()):
+    st.subheader("Skip-gram · Entrenamiento controlado")
+    st.write("El entrenamiento utiliza exclusivamente los libros locales y los recursos configurados.")
+    st.info("Puedes cambiar CPU/GPU, hilos, memoria y todos los hiperparámetros en **🛠️ Configuración**. "
+            "Los cambios se aplicarán en el siguiente entrenamiento.")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Dispositivo", resolved_name)
+    c2.metric("Épocas", settings["epochs"])
+    c3.metric("Lote", settings["batch_size"])
+    c4.metric("Dimensiones", settings["dimensions"])
+    with st.expander("Ver todos los parámetros antes de entrenar"):
+        st.json(settings)
+    if st.button("Entrenar embeddings con estos valores", type="primary",
+                 disabled=not CORPUS.exists() or needs_device_review):
         corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
         run_dir = RUNS / datetime.now().strftime("run_%Y%m%d_%H%M%S_%f")
         progress = st.progress(0, text="Inicializando...")
         placeholder = st.empty()
+        epochs = settings["epochs"]
 
         def update(row, history):
             progress.progress(row["epoch"] / epochs, text=f"Época {row['epoch']}/{epochs} · pérdida {row['loss']:.4f}")
             placeholder.line_chart(pd.DataFrame(history).set_index("epoch")["loss"])
 
         try:
-            train(corpus, run_dir, dimensions=dimensions, window=window,
-                  epochs=epochs, negatives=negatives, batch_size=batch,
-                  max_pairs=int(max_pairs), on_epoch=update)
+            train(corpus, run_dir, dimensions=settings["dimensions"],
+                  window=settings["window"], epochs=epochs,
+                  negatives=settings["negatives"], batch_size=settings["batch_size"],
+                  max_pairs=settings["max_pairs"], learning_rate=settings["learning_rate"],
+                  seed=settings["seed"], device=settings["device"],
+                  cpu_threads=settings["cpu_threads"],
+                  gpu_memory_fraction=settings["gpu_memory_fraction"],
+                  snapshot_every=settings["snapshot_every"], on_epoch=update)
             st.success(f"Entrenamiento finalizado. Experimento: {run_dir.name}")
-            st.info("Visita las pestañas 'Explorar palabras' y 'Experimentos' para revisar el resultado.")
-        except Exception as exc:
-            st.error(f"Error de entrenamiento: {exc}")
+            st.info("Visita 'Explorar palabras' y 'Experimentos' para revisar los resultados reales.")
+        except torch.cuda.OutOfMemoryError:
+            st.error("Memoria GPU insuficiente: reduce lote, dimensiones o muestras negativas "
+                     "en Configuración; también puedes elegir CPU.")
+        except (RuntimeError, ValueError, OSError) as exc:
+            st.error(f"El entrenamiento no se completó: {exc}")
 
 run_dirs = sorted((p for p in RUNS.iterdir() if (p / "embeddings_final.npy").exists()), reverse=True)
 with st.sidebar:
@@ -146,3 +179,6 @@ with experiment_tab:
                     archive.write(file, arcname=file.name)
         st.download_button("Exportar experimento (ZIP)", data=data.getvalue(),
                            file_name=f"EduGPT_{run_name}.zip", mime="application/zip")
+
+with config_tab:
+    settings_editor(SETTINGS, hardware)
