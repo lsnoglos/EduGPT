@@ -88,6 +88,14 @@ def profile_defaults(hardware: dict, profile: str = "Equilibrado") -> dict:
                     gpu_memory_fraction=0.90, dimensions=128, epochs=20, negatives=8,
                     batch_size=1024 if has_gpu else 256, max_pairs=300000,
                     snapshot_every=2)
+    # Ajustar presets al hardware, sin imponer límites irreales al modo manual.
+    if hardware["ram_total_gb"] < 8:
+        base["max_pairs"] = min(base["max_pairs"], 30000)
+        base["batch_size"] = min(base["batch_size"], 64)
+        base["dimensions"] = min(base["dimensions"], 64)
+    if has_gpu and max(g["total_gb"] for g in hardware["gpu_devices"]) < 6:
+        base["batch_size"] = min(base["batch_size"], 256)
+        base["dimensions"] = min(base["dimensions"], 64)
     return base
 
 
