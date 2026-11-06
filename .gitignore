@@ -6,3 +6,4 @@ data/books/
 data/processed/
 artifacts/runs/
 .env
+data/settings.json
